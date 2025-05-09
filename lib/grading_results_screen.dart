@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:share_plus/share_plus.dart';
 import 'dart:convert';
 
@@ -97,13 +97,19 @@ ${_formatDetails(_results['details'])}
     }
   }
 
-  String _formatDetails(Map<String, dynamic>? details) {
-    if (details == null) return 'No details available';
-
-    return details.entries
-        .map((entry) => '${entry.key}: ${entry.value}')
-        .join('\n');
+String _formatDetails(Map<String, dynamic>? details) {
+  // Check if the map is null or empty.
+  if (details == null || details.isEmpty) {
+    return 'No details available';
   }
+
+  // If the map is not null and not empty, format its entries.
+  // '${entry.key}: ${entry.value}' will use the .toString() method for entry.value.
+  // .join('\n') will place a newline character between each formatted entry.
+  return details.entries
+      .map((entry) => '${entry.key}: ${entry.value}')
+      .join('\n');
+}
 
   @override
   Widget build(BuildContext context) {

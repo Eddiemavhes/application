@@ -75,7 +75,6 @@ class TobaccoClassifier {
 
       // Prepare input tensor
       final inputShape = interpreter.getInputTensor(0).shape;
-      final inputType = interpreter.getInputTensor(0).type;
       final inputBuffer = Float32List(inputShape.reduce((a, b) => a * b));
 
       // Convert image to input tensor
@@ -117,11 +116,11 @@ class TobaccoClassifier {
     var clahe = _applyCLAHE(gray);
 
     // Convert back to RGB
-    var enhanced = img.Image.from(clahe); // Create new RGB image
+    var enhanced = img.Image(width: clahe.width, height: clahe.height);
     for (var y = 0; y < clahe.height; y++) {
       for (var x = 0; x < clahe.width; x++) {
         var pixel = clahe.getPixel(x, y);
-        enhanced.setPixel(x, y, pixel);
+        enhanced.setPixelRgb(x, y, pixel.r.toInt(), pixel.g.toInt(), pixel.b.toInt());
       }
     }
 
@@ -136,12 +135,10 @@ class TobaccoClassifier {
     for (var y = 0; y < image.height; y++) {
       for (var x = 0; x < image.width; x++) {
         var pixel = image.getPixel(x, y);
-        // Extract RGB components using bitwise operations
-        var r = (pixel >> 16) & 0xFF;
-        var g = (pixel >> 8) & 0xFF;
-        var b = pixel & 0xFF;
+        var r = pixel.r;
+        var g = pixel.g;
+        var b = pixel.b;
 
-        // Normalize pixel values to [0, 1]
         buffer[bufferIndex++] = r / 255.0;
         buffer[bufferIndex++] = g / 255.0;
         buffer[bufferIndex++] = b / 255.0;
@@ -196,7 +193,6 @@ class TobaccoClassifier {
         'defects': 'Minor',
         'firmness': 'Good',
       },
-      // Add more grades as needed
     };
 
     return details[grade] ??
@@ -210,11 +206,14 @@ class TobaccoClassifier {
   }
 
   static img.Image _applyCLAHE(img.Image image) {
-    final histogram = List<int>.filled(256, 0);
-    final pixels = image.data;
+    if (image.numChannels != 1) {
+      image = img.grayscale(image);
+    }
 
-    for (var pixel in pixels) {
-      histogram[pixel & 0xFF]++;
+    final pixels = image.getBytes(order: img.ChannelOrder.red);
+    final histogram = List<int>.filled(256, 0);
+    for (var p in pixels) {
+      histogram[p]++;
     }
 
     final cumulative = List<int>.filled(256, 0);
@@ -224,17 +223,19 @@ class TobaccoClassifier {
     }
 
     final normalized = List<int>.filled(256, 0);
-    final total = cumulative[255];
+    final totalPixels = pixels.length;
+    if (totalPixels == 0) return image;
+
     for (var i = 0; i < 256; i++) {
-      normalized[i] = (cumulative[i] * 255 / total).round();
+      normalized[i] = (cumulative[i] * 255 / totalPixels).round().clamp(0, 255);
     }
 
-    final result = img.Image.from(image);
-    for (var i = 0; i < pixels.length; i++) {
-      result.data[i] = normalized[pixels[i] & 0xFF];
+    final newPixels = Uint8List(totalPixels);
+    for (var i = 0; i < totalPixels; i++) {
+      newPixels[i] = normalized[pixels[i]];
     }
 
-    return result;
+    return img.Image.fromBytes(width: image.width, height: image.height, bytes: newPixels.buffer, numChannels: 1);
   }
 
   static img.Image _applyBilateralFilter(img.Image image) {
@@ -258,46 +259,45 @@ class TobaccoClassifier {
             if (nx >= 0 && nx < image.width && ny >= 0 && ny < image.height) {
               var neighborPixel = image.getPixel(nx, ny);
 
-              var spaceWeight = exp(
-                -(kx * kx + ky * ky) / (2 * sigmaSpace * sigmaSpace),
-              );
-              var colorWeight = exp(
-                -_colorDistance(centerPixel, neighborPixel) /
-                    (2 * sigmaColor * sigmaColor),
-              );
+              var dSquare = kx * kx + ky * ky;
+              var cDistance = _colorDistance(centerPixel, neighborPixel);
 
+              var spaceWeight = exp(-dSquare / (2 * sigmaSpace * sigmaSpace));
+              var colorWeight = exp(-cDistance / (2 * sigmaColor * sigmaColor));
               var weight = spaceWeight * colorWeight;
-              weightSum += weight;
 
-              sumR += ((neighborPixel >> 16) & 0xFF) * weight;
-              sumG += ((neighborPixel >> 8) & 0xFF) * weight;
-              sumB += (neighborPixel & 0xFF) * weight;
+              weightSum += weight;
+              sumR += neighborPixel.r * weight;
+              sumG += neighborPixel.g * weight;
+              sumB += neighborPixel.b * weight;
             }
           }
         }
 
-        var r = (sumR / weightSum).round().clamp(0, 255);
-        var g = (sumG / weightSum).round().clamp(0, 255);
-        var b = (sumB / weightSum).round().clamp(0, 255);
-
-        result.setPixel(x, y, (r << 16) | (g << 8) | b);
+        if (weightSum == 0) { 
+           result.setPixelRgb(x,y, centerPixel.r.toInt(), centerPixel.g.toInt(), centerPixel.b.toInt());
+        } else {
+            var r = (sumR / weightSum).round().clamp(0, 255);
+            var g = (sumG / weightSum).round().clamp(0, 255);
+            var b = (sumB / weightSum).round().clamp(0, 255);
+            result.setPixelRgb(x, y, r, g, b);
+        }
       }
     }
-
     return result;
   }
 
-  static double _colorDistance(int pixel1, int pixel2) {
-    var r1 = (pixel1 >> 16) & 0xFF;
-    var g1 = (pixel1 >> 8) & 0xFF;
-    var b1 = pixel1 & 0xFF;
+  static double _colorDistance(img.Pixel pixel1, img.Pixel pixel2) {
+    var r1 = pixel1.r;
+    var g1 = pixel1.g;
+    var b1 = pixel1.b;
 
-    var r2 = (pixel2 >> 16) & 0xFF;
-    var g2 = (pixel2 >> 8) & 0xFF;
-    var b2 = pixel2 & 0xFF;
+    var r2 = pixel2.r;
+    var g2 = pixel2.g;
+    var b2 = pixel2.b;
 
     return sqrt(
       pow(r1 - r2, 2) + pow(g1 - g2, 2) + pow(b1 - b2, 2),
-    );
+    ).toDouble();
   }
 }

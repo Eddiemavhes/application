@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:myapp/services/classifier.dart';
 import 'package:camera/camera.dart';
 import 'dart:io'; // Required for File
 

@@ -1,15 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:tobacco_grading_app/welcome_screen.dart';
-import 'package:tobacco_grading_app/main_form_screen.dart';
-import 'package:tobacco_grading_app/grading_results_screen.dart';
-import 'package:tobacco_grading_app/services/classifier.dart'; // Import the classifier
+import 'package:myapp/welcome_screen.dart';
+import 'package:myapp/main_form_screen.dart';
+import 'package:myapp/grading_results_screen.dart';
+import 'package:myapp/services/classifier.dart'; // Import the classifier
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Initialize the classifier when the app starts
-  final classifier = await TobaccoClassifier.load(
-    'assets/models/tobacco_model_v1.joblib',
-  );
+  final classifier = await TobaccoClassifier.load();
   runApp(MyApp(classifier: classifier));
 }
 
